@@ -678,7 +678,7 @@ add_feature_info(blocksqp-interface WITH_BLOCKSQP "Interface to the NLP solver b
 option(WITH_IPOPT "Compile the interface to IPOPT" ${WITH_IPOPT_DEF})
 set(BUILD_IPOPT_GIT_REPO "https://github.com/jgillis/Ipopt-1.git" CACHE STRING "Git repo used together with BUILD_IPOPT_VERSION")
 set(BUILD_IPOPT_VERSION "3.14.11.mod" CACHE STRING "Tag/branch/hash to be used for BUILD_IPOPT_GIT_REPO")
-option(WITH_BUILD_IPOPT "Build IPOPT (BUILD_IPOPT_VERSION=${BUILD_IPOPT_VERSION}) from downloaded source (BUILD_IPOPT_GIT_REPO=${BUILD_IPOPT_GIT_REPO})." OFF)
+option(WITH_BUILD_IPOPT "Build IPOPT (BUILD_IPOPT_VERSION=${BUILD_IPOPT_VERSION}) from downloaded source (BUILD_IPOPT_GIT_REPO=${BUILD_IPOPT_GIT_REPO})." ON)
 set(BUILD_IPOPT_DEPENDENCIES MUMPS)
 
 
@@ -741,13 +741,13 @@ option(WITH_MUMPS "Enable MUMPS interface" ON) # ENABLED
 set(BUILD_MUMPS_TP_VERSION "releases/3.0.2" CACHE STRING "Tag/branch/hash to be used for BUILD_MUMPS_TP_GIT_REPO")
 set(BUILD_METIS_TP_VERSION "releases/2.0.0" CACHE STRING "Tag/branch/hash to be used for BUILD_BETIS_TP_GIT_REPO")
 set(BUILD_METIS_TP_GIT_REPO "https://github.com/coin-or-tools/ThirdParty-Metis.git" CACHE STRING "Git repo used together with BUILD_METIS_TP_VERSION")
-option(WITH_BUILD_METIS "Build Metis from downloaded source." OFF)
+option(WITH_BUILD_METIS "Build Metis from downloaded source." OFF)  
 set(BUILD_MUMPS_TP_GIT_REPO "https://github.com/coin-or-tools/ThirdParty-Mumps.git" CACHE STRING "Git repo used together with BUILD_MUMPS_TP_VERSION")
 
 option(WITH_BUILD_MUMPS "Build MUMPS (BUILD_MUMPS_TP_VERSION=${BUILD_MUMPS_TP_VERSION}) from downloaded source (BUILD_MUMPS_TP_GIT_REPO=${BUILD_MUMPS_TP_GIT_REPO})." ON)
 set(BUILD_MUMPS_DEPENDENCIES LAPACK METIS)
 
-# SPRAL
+# SPRALq
 option(WITH_SPRAL "Enable SPRAL interface" OFF)
 set(BUILD_SPRAL_VERSION "d385d2c9e858366d257cafaaf05760ffa6543e26" CACHE STRING "Tag/branch/hash to be used for BUILD_SPRAL_GIT_REPO")
 set(BUILD_SPRAL_GIT_REPO "https://github.com/ralna/spral.git" CACHE STRING "Git repo used together with BUILD_SPRAL_VERSION")
