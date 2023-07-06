@@ -741,7 +741,7 @@ option(WITH_MUMPS "Enable MUMPS interface" ON) # ENABLED
 set(BUILD_MUMPS_TP_VERSION "releases/3.0.2" CACHE STRING "Tag/branch/hash to be used for BUILD_MUMPS_TP_GIT_REPO")
 set(BUILD_METIS_TP_VERSION "releases/2.0.0" CACHE STRING "Tag/branch/hash to be used for BUILD_BETIS_TP_GIT_REPO")
 set(BUILD_METIS_TP_GIT_REPO "https://github.com/coin-or-tools/ThirdParty-Metis.git" CACHE STRING "Git repo used together with BUILD_METIS_TP_VERSION")
-option(WITH_BUILD_METIS "Build Metis from downloaded source." OFF)  
+option(WITH_BUILD_METIS "Build Metis from downloaded source." ON)
 set(BUILD_MUMPS_TP_GIT_REPO "https://github.com/coin-or-tools/ThirdParty-Mumps.git" CACHE STRING "Git repo used together with BUILD_MUMPS_TP_VERSION")
 
 option(WITH_BUILD_MUMPS "Build MUMPS (BUILD_MUMPS_TP_VERSION=${BUILD_MUMPS_TP_VERSION}) from downloaded source (BUILD_MUMPS_TP_GIT_REPO=${BUILD_MUMPS_TP_GIT_REPO})." ON)
