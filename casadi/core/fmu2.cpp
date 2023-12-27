@@ -260,6 +260,23 @@ void Fmu2::init(const DaeBuilderInternal* dae) {
     + "/" + instance_name_no_dot + dll_suffix();
   li_ = Importer(dll_path, "dll");
 
+  declared_ad_ = dae->provides_directional_derivative_;
+
+  if (dae->provides_directional_derivative_) {
+
+  }
+
+  // Path to resource directory
+  resource_loc_ = "file://" + dae->path_ + "/resources";
+
+  // Copy info from DaeBuilder
+  fmutol_ = dae->fmutol_;
+  instance_name_ = dae->model_identifier_;
+  guid_ = dae->guid_;
+  logging_on_ = dae->debug_;
+}
+
+void Fmu2::finalize() {
   // Get FMI C functions
   instantiate_ = load_function<fmi2InstantiateTYPE>("fmi2Instantiate");
   free_instance_ = load_function<fmi2FreeInstanceTYPE>("fmi2FreeInstance");
@@ -279,9 +296,10 @@ void Fmu2::init(const DaeBuilderInternal* dae) {
   set_boolean_ = load_function<fmi2SetBooleanTYPE>("fmi2SetBoolean");
   get_string_ = load_function<fmi2GetStringTYPE>("fmi2GetString");
   set_string_ = load_function<fmi2SetStringTYPE>("fmi2SetString");
-  if (dae->provides_directional_derivative_) {
-    get_directional_derivative_ = load_function<fmi2GetDirectionalDerivativeTYPE>(
-      "fmi2GetDirectionalDerivative");
+
+  if (declared_ad_) {
+    get_directional_derivative_ =
+      load_function<fmi2GetDirectionalDerivativeTYPE>("fmi2GetDirectionalDerivative");
   }
 
   // Callback functions
@@ -290,15 +308,6 @@ void Fmu2::init(const DaeBuilderInternal* dae) {
   functions_.freeMemory = free;
   functions_.stepFinished = 0;
   functions_.componentEnvironment = 0;
-
-  // Path to resource directory
-  resource_loc_ = "file://" + dae->path_ + "/resources";
-
-  // Copy info from DaeBuilder
-  fmutol_ = dae->fmutol_;
-  instance_name_ = dae->model_identifier_;
-  guid_ = dae->guid_;
-  logging_on_ = dae->debug_;
 
   // Create a temporary instance
   fmi2Component c = instantiate();
@@ -885,6 +894,86 @@ Fmu2::Fmu2(const std::string& name,
   set_boolean_ = 0;
   get_real_ = 0;
   get_directional_derivative_ = 0;
+}
+
+Fmu2* Fmu2::deserialize(DeserializingStream& s) {
+  Fmu2* ret = new Fmu2(s);
+  ret->finalize();
+  return ret;
+}
+
+Fmu2::Fmu2(DeserializingStream& s) : FmuInternal(s) {
+  instantiate_ = 0;
+  free_instance_ = 0;
+  reset_ = 0;
+  setup_experiment_ = 0;
+  enter_initialization_mode_ = 0;
+  exit_initialization_mode_ = 0;
+  enter_continuous_time_mode_ = 0;
+  set_real_ = 0;
+  set_boolean_ = 0;
+  get_real_ = 0;
+  get_directional_derivative_ = 0;
+
+  s.version("Fmu2", 1);
+  s.unpack("Fmu2::resource_loc", resource_loc_);
+  s.unpack("Fmu2::fmutol", fmutol_);
+  s.unpack("Fmu2::instance_name", instance_name_);
+  s.unpack("Fmu2::guid", guid_);
+  s.unpack("Fmu2::logging_on", logging_on_);
+
+  s.unpack("Fmu2::vr_real", vr_real_);
+  s.unpack("Fmu2::vr_integer", vr_integer_);
+  s.unpack("Fmu2::vr_boolean", vr_boolean_);
+  s.unpack("Fmu2::vr_string", vr_string_);
+  s.unpack("Fmu2::init_real", init_real_);
+  s.unpack("Fmu2::init_integer", init_integer_);
+  s.unpack("Fmu2::init_boolean", init_boolean_);
+  s.unpack("Fmu2::init_string", init_string_);
+
+  s.unpack("Fmu2::vn_aux_real", vn_aux_real_);
+  s.unpack("Fmu2::vn_aux_integer", vn_aux_integer_);
+  s.unpack("Fmu2::vn_aux_boolean", vn_aux_boolean_);
+  s.unpack("Fmu2::vn_aux_string", vn_aux_string_);
+  s.unpack("Fmu2::vr_aux_real", vr_aux_real_);
+  s.unpack("Fmu2::vr_aux_integer", vr_aux_integer_);
+  s.unpack("Fmu2::vr_aux_boolean", vr_aux_boolean_);
+  s.unpack("Fmu2::vr_aux_string", vr_aux_string_);
+
+  s.unpack("Fmu2::declared_ad", declared_ad_);
+
+}
+
+
+void Fmu2::serialize_body(SerializingStream &s) const {
+  FmuInternal::serialize_body(s);
+
+  s.version("Fmu2", 1);
+  s.pack("Fmu2::resource_loc", resource_loc_);
+  s.pack("Fmu2::fmutol", fmutol_);
+  s.pack("Fmu2::instance_name", instance_name_);
+  s.pack("Fmu2::guid", guid_);
+  s.pack("Fmu2::logging_on", logging_on_);
+
+  s.pack("Fmu2::vr_real", vr_real_);
+  s.pack("Fmu2::vr_integer", vr_integer_);
+  s.pack("Fmu2::vr_boolean", vr_boolean_);
+  s.pack("Fmu2::vr_string", vr_string_);
+  s.pack("Fmu2::init_real", init_real_);
+  s.pack("Fmu2::init_integer", init_integer_);
+  s.pack("Fmu2::init_boolean", init_boolean_);
+  s.pack("Fmu2::init_string", init_string_);
+
+  s.pack("Fmu2::vn_aux_real_", vn_aux_real_);
+  s.pack("Fmu2::vn_aux_integer_", vn_aux_integer_);
+  s.pack("Fmu2::vn_aux_boolean_", vn_aux_boolean_);
+  s.pack("Fmu2::vn_aux_string_", vn_aux_string_);
+  s.pack("Fmu2::vr_aux_real_", vr_aux_real_);
+  s.pack("Fmu2::vr_aux_integer_", vr_aux_integer_);
+  s.pack("Fmu2::vr_aux_boolean_", vr_aux_boolean_);
+  s.pack("Fmu2::vr_aux_string_", vr_aux_string_);
+
+  s.pack("Fmu2::declared_ad", declared_ad_);
 }
 
 #endif  // WITH_FMI2

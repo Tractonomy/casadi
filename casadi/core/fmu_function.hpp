@@ -160,7 +160,7 @@ class CASADI_EXPORT FmuFunction : public FunctionInternal {
   // User-set options
   bool enable_ad_, validate_ad_, make_symmetric_, check_hessian_;
   double step_, abstol_, reltol_;
-  bool print_progress_, new_jacobian_, new_hessian_, hessian_coloring_;
+  bool print_progress_, new_jacobian_, new_forward_, new_hessian_, hessian_coloring_;
   std::string validate_ad_file_;
 
   // FD method as an enum
@@ -251,11 +251,11 @@ class CASADI_EXPORT FmuFunction : public FunctionInternal {
 
   // Evaluate all tasks numerically, serially or in parallel
   int eval_all(FmuMemory* m, casadi_int n_task,
-    bool need_nondiff, bool need_jac, bool need_adj, bool need_hess) const;
+    bool need_nondiff, bool need_jac, bool need_fwd, bool need_adj, bool need_hess) const;
 
   // Evaluate numerically, single thread
   int eval_task(FmuMemory* m, casadi_int task, casadi_int n_task,
-    bool need_nondiff, bool need_jac, bool need_adj, bool need_hess) const;
+    bool need_nondiff, bool need_jac, bool need_fwd, bool need_adj, bool need_hess) const;
 
   // Remove NaNs from Hessian (necessary for star coloring approach)
   void remove_nans(double *hess_nz, casadi_int* iw) const;
@@ -299,6 +299,17 @@ class CASADI_EXPORT FmuFunction : public FunctionInternal {
   ///@}
 
   ///@{
+  /** \brief Return function that calculates forward derivatives
+
+      \identifier{27h} */
+  bool has_forward(casadi_int nfwd) const override;
+  Function get_forward(casadi_int nfwd, const std::string& name,
+    const std::vector<std::string>& inames,
+    const std::vector<std::string>& onames,
+    const Dict& opts) const override;
+  ///@}
+
+  ///@{
   /** \brief Reverse mode AD
 
       \identifier{yq} */
@@ -326,6 +337,27 @@ class CASADI_EXPORT FmuFunction : public FunctionInternal {
 
   /// Get all statistics
   Dict get_stats(void* mem) const override;
+
+  /** \brief Serialize an object without type information
+
+      \identifier{279} */
+  void serialize_body(SerializingStream &s) const override;
+
+  /** \brief Deserialize without type information
+
+      \identifier{27a} */
+  static ProtoFunction* deserialize(DeserializingStream& s) { return new FmuFunction(s); }
+
+  /** \brief Change option after object creation for debugging
+
+      \identifier{27f} */
+  void change_option(const std::string& option_name, const GenericType& option_value) override;
+
+  protected:
+    /** \brief Deserializing constructor
+
+        \identifier{27b} */
+    explicit FmuFunction(DeserializingStream& s);
 };
 
 } // namespace casadi

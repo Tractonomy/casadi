@@ -40,6 +40,12 @@ if "SKIP_WORHP_TESTS" not in os.environ and has_nlpsol("worhp")  and not args.ig
   #solvers.append(("worhp",{"TolOpti":1e-20,"TolFeas":1e-20,"UserHM": False}))
   pass
 
+if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
+  solvers.append(("sleqp",{"print_time":False,"sleqp": {"linesearch": "Approx","feas_tol":1e-7,"stat_tol":1e-7,"slack_tol":1e-7, "hess_eval": "Exact"}},set()))
+
+if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
+  solvers.append(("alpaqa",{"print_time":False,"alpaqa": {"alm.tolerance": 1e-10, "alm.dual_tolerance": 1e-10, "alm.penalty_update_factor": 10, "alm.max_iter": 3000, "alm.print_interval": 1, "panoc.max_iter": 500, "panoc.print_interval": 1, "lbfgs.memory": 2}},set()))
+
 if "SKIP_IPOPT_TESTS" not in os.environ and has_nlpsol("ipopt"):
   solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"second-order","print_level":0}},set()))
   solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"first-order","hessian_approximation": "limited-memory","print_level":0}},set()))
@@ -76,6 +82,21 @@ print(solvers)
 
 class NLPtests(casadiTestCase):
 
+  @requires_nlpsol("alpaqa")
+  def test_alpaqa(self):
+    x=SX.sym("x")
+    y=SX.sym("y")
+
+    nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
+
+    solver = nlpsol("mysolver", "alpaqa", nlp)
+    solver_in = {}
+    solver_in["lbx"]=[-10]*2
+    solver_in["ubx"]=[10]*2
+    solver_in["lbg"]=[-10]
+    solver_in["ubg"]=[10]
+    solver_out = solver(**solver_in)
+
   @memory_heavy()
   def test_nonregular_point(self):
     x=SX.sym("x")
@@ -83,6 +104,7 @@ class NLPtests(casadiTestCase):
     nlp={'x':x,'f':(x+1)**2, 'g': sqrt(x)}
 
     for Solver, solver_options, features in solvers:
+      
       print("test_nonregular_point",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
@@ -95,12 +117,13 @@ class NLPtests(casadiTestCase):
         print(solver(**solver_in))
       except:
         pass
-      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro"]:
+      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro","sleqp","alpaqa"]:
         self.assertTrue(solver.stats()["unified_return_status"]=="SOLVER_RET_NAN")
       self.assertFalse(solver.stats()["success"])
 
     nlp={'x':x,'f':x**2, 'g': sqrt(x)}
     for Solver, solver_options, features in solvers:
+      
       print("test_nonregular_point",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
@@ -114,7 +137,7 @@ class NLPtests(casadiTestCase):
         solver_out = solver(**solver_in)
       except:
         pass
-      if Solver not in ["ipopt","snopt","bonmin","knitro"]:
+      if Solver not in ["ipopt","snopt","bonmin","knitro","sleqp","alpaqa"]:
         self.assertTrue(solver.stats()["unified_return_status"]=="SOLVER_RET_NAN")
       self.assertFalse(solver.stats()["success"])
 
@@ -135,6 +158,7 @@ class NLPtests(casadiTestCase):
    x = MX.sym("x")
    nlp = {"x":x,"f":interrupt(x),"g":x}
    for Solver, solver_options, features in solvers:
+     
      solver_options = dict(solver_options)
      solver_options["error_on_fail"] = True
      solver = nlpsol("solver",Solver,nlp,solver_options)
@@ -146,8 +170,9 @@ class NLPtests(casadiTestCase):
          solver(lbg=-5,ubg=5)
 
    for Solver, solver_options, features in solvers:
+      
       #if Solver not in ["ipopt","sqpmethod"]: continue
-      if Solver in ["worhp","blocksqp","knitro","bonmin","snopt"]: continue
+      if Solver in ["worhp","blocksqp","knitro","bonmin","snopt","alpaqa"]: continue
       print("test_iteration_interrupt",Solver,solver_options)
 
       opti = Opti()
@@ -234,6 +259,7 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x")
     nlp={'x':x, 'f':-x,'g':x}
     for Solver, solver_options, features in solvers:
+      
       print("test_nan",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
@@ -604,7 +630,7 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
 
       if "codegen" in features:
         self.check_codegen(solver,solver_in,std="c99")
@@ -663,7 +689,7 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver)+str(6 if Solver=="snopt" else 8))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
       self.check_serialize(solver, solver_in)
 
       if "codegen" in features:
@@ -740,7 +766,7 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
 
 
   def test_IPOPTrhb_gen(self):
@@ -1540,6 +1566,7 @@ class NLPtests(casadiTestCase):
     for Solver, solver_options, features in solvers:
       if "ipopt" in str(solver_options): continue
       if "snopt" in str(solver_options): continue
+      if Solver in ["alpaqa"]: continue
       if "knitro" in str(Solver):
         solver_options = copy.deepcopy(solver_options)
         solver_options["knitro"]["algorithm"] = 4 # sqp
@@ -2075,6 +2102,7 @@ class NLPtests(casadiTestCase):
     nlp={'x':x, 'f':(x-1)**2, 'g':x_fail}
         
     for Solver, solver_options, features in solvers:
+      
       print("test_exception_in_oraclefunction",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}

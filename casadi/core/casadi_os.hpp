@@ -40,6 +40,16 @@
 #define _WIN32_WINNT 0x0502
 #endif
 #include <windows.h>
+// Avoid IN/OUT macros that may interfere with CasADi code
+#ifdef IN
+#undef IN
+#endif
+#ifdef OUT
+#undef OUT
+#endif
+#ifdef interface
+#undef interface
+#endif
 #else // _WIN32
 #include <dlfcn.h>
 #endif // _WIN32

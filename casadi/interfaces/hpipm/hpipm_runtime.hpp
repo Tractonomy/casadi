@@ -176,7 +176,7 @@ struct casadi_hpipm_data {
 // C-REPLACE "casadi_hpipm_data<T1>" "struct casadi_hpipm_data"
 
 
-// SYMBOL "qp_work"
+// SYMBOL "hpipm_work"
 template<typename T1>
 void casadi_hpipm_work(const casadi_hpipm_prob<T1>* p, casadi_int* sz_arg, casadi_int* sz_res, casadi_int* sz_iw, casadi_int* sz_w) {
   casadi_qp_work(p->qp, sz_arg, sz_res, sz_iw, sz_w);
@@ -245,9 +245,9 @@ void casadi_hpipm_work(const casadi_hpipm_prob<T1>* p, casadi_int* sz_arg, casad
 
 }
 
-// SYMBOL "qp_init"
+// SYMBOL "hpipm_set_work"
 template<typename T1>
-void casadi_hpipm_init(casadi_hpipm_data<T1>* d, const T1*** arg, T1*** res, casadi_int** iw, T1** w) {
+void casadi_hpipm_set_work(casadi_hpipm_data<T1>* d, const T1*** arg, T1*** res, casadi_int** iw, T1** w) {
   // Local variables
   casadi_int offset, i, k;
   
@@ -450,9 +450,9 @@ int casadi_hpipm_solve(casadi_hpipm_data<T1>* d, const double** arg, double** re
     // replace infinities
     casadi_clip_min(d->lbx, p->nx_total, -p->inf, 0);
     casadi_clip_min(d->lbu, p->nu_total, -p->inf, 0);
-    casadi_clip_min(d->lg,  p->nu_total, -p->inf, 0); // count?
+    casadi_clip_min(d->lg,  p->ng_total, -p->inf, 0); // count?
     casadi_clip_max(d->ubx, p->nx_total, p->inf, 0);
-    casadi_clip_max(d->ubu, p->ng_total, p->inf, 0);
+    casadi_clip_max(d->ubu, p->nu_total, p->inf, 0);
     casadi_clip_max(d->ug,  p->ng_total, p->inf, 0); // count?
 
 

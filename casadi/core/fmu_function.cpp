@@ -135,12 +135,23 @@ FmuFunction::FmuFunction(const std::string& name, const Fmu& fmu,
   reltol_ = 1e-3;
   print_progress_ = false;
   new_jacobian_ = true;
+  new_forward_ = false;
   new_hessian_ = true;
   hessian_coloring_ = true;
   parallelization_ = Parallelization::SERIAL;
   // Number of parallel tasks, by default
   max_n_tasks_ = 1;
   max_jac_tasks_ = max_hess_tasks_ = 0;
+}
+
+void FmuFunction::change_option(const std::string& option_name,
+    const GenericType& option_value) {
+  if (option_name == "print_progress") {
+    print_progress_ = option_value;
+  } else {
+    // Option not found - continue to base classes
+    FunctionInternal::change_option(option_name, option_value);
+  }
 }
 
 FmuFunction::~FmuFunction() {
@@ -276,9 +287,9 @@ void FmuFunction::init(const Dict& opts) {
     }
   }
 
-  // Forward derivatives not yet implemented
-  if (has_fwd_) casadi_warning("Forward derivatives not implemented, ignored");
-
+  // Forward derivatives only supported with analytic derivatives
+  if (has_fwd_ && !enable_ad_)
+    casadi_error("Analytic derivatives needed for forward directional derivatives");
 
   // Quick return if no Jacobian calculation
   if (!has_jac_ && !has_adj_ && !has_hess_) return;
@@ -776,13 +787,16 @@ int FmuFunction::eval(const double** arg, double** res, casadi_int* iw, double* 
   FmuMemory* m = static_cast<FmuMemory*>(mem);
   casadi_assert(m != 0, "Memory is null");
   // What blocks are there?
-  bool need_jac = false, need_adj = false, need_hess = false;
+  bool need_jac = false, need_fwd = false, need_adj = false, need_hess = false;
   for (size_t k = 0; k < out_.size(); ++k) {
     if (res[k]) {
       switch (out_[k].type) {
         case OutputType::JAC:
         case OutputType::JAC_TRANS:
           need_jac = true;
+          break;
+        case OutputType::FWD:
+          need_fwd = true;
           break;
         case OutputType::ADJ:
           need_adj = true;
@@ -846,11 +860,11 @@ int FmuFunction::eval(const double** arg, double** res, casadi_int* iw, double* 
   }
   // Evaluate everything except Hessian, possibly in parallel
   if (verbose_) casadi_message("Evaluating regular outputs, forward sens, extended Jacobian");
-  if (eval_all(m, max_jac_tasks_, true, need_jac, need_adj, false)) return 1;
+  if (eval_all(m, max_jac_tasks_, true, need_jac, need_fwd, need_adj, false)) return 1;
   // Evaluate Hessian
   if (need_hess) {
     if (verbose_) casadi_message("Evaluating extended Hessian");
-    if (eval_all(m, max_hess_tasks_, false, false, false, true)) return 1;
+    if (eval_all(m, max_hess_tasks_, false, false, false, false, true)) return 1;
     // Post-process Hessian
     remove_nans(hess_nz, iw);
     if (check_hessian_) check_hessian(m, hess_nz, iw);
@@ -888,14 +902,14 @@ int FmuFunction::eval(const double** arg, double** res, casadi_int* iw, double* 
 }
 
 int FmuFunction::eval_all(FmuMemory* m, casadi_int n_task,
-    bool need_nondiff, bool need_jac, bool need_adj, bool need_hess) const {
+    bool need_nondiff, bool need_jac, bool need_fwd, bool need_adj, bool need_hess) const {
   // Return flag
   int flag = 0;
   // Evaluate, serially or in parallel
   if (parallelization_ == Parallelization::SERIAL || n_task == 1
       || (!need_jac && !need_adj && !need_hess)) {
     // Evaluate serially
-    flag = eval_task(m, 0, 1, need_nondiff, need_jac, need_adj, need_hess);
+    flag = eval_task(m, 0, 1, need_nondiff, need_jac, need_fwd, need_adj, need_hess);
   } else if (parallelization_ == Parallelization::OPENMP) {
     #ifdef WITH_OPENMP
     // Parallel region
@@ -910,8 +924,8 @@ int FmuFunction::eval_all(FmuMemory* m, casadi_int n_task,
       // Evaluate in parallel
       if (task < num_used_threads) {
         FmuMemory* s = task == 0 ? m : m->slaves.at(task - 1);
-        flag = eval_task(s, task, num_used_threads,
-          need_nondiff && task == 0, need_jac, need_adj, need_hess);
+        flag = eval_task(s, task, num_used_threads, need_nondiff && task == 0,
+          need_jac, need_fwd && task == 0, need_adj, need_hess);
       } else {
         // Nothing to do for thread
         flag = 0;
@@ -930,8 +944,8 @@ int FmuFunction::eval_all(FmuMemory* m, casadi_int n_task,
       threads.emplace_back(
         [&, task](int* fl) {
           FmuMemory* s = task == 0 ? m : m->slaves.at(task - 1);
-          *fl = eval_task(s, task, n_task,
-            need_nondiff && task == 0, need_jac, need_adj, need_hess);
+          *fl = eval_task(s, task, n_task, need_nondiff && task == 0,
+            need_jac, need_fwd && task == 0, need_adj, need_hess);
         }, &flag_task[task]);
     }
     // Join threads
@@ -949,7 +963,7 @@ int FmuFunction::eval_all(FmuMemory* m, casadi_int n_task,
 }
 
 int FmuFunction::eval_task(FmuMemory* m, casadi_int task, casadi_int n_task,
-    bool need_nondiff, bool need_jac, bool need_adj, bool need_hess) const {
+    bool need_nondiff, bool need_jac, bool need_fwd, bool need_adj, bool need_hess) const {
   // Pass all regular inputs
   for (size_t k = 0; k < in_.size(); ++k) {
     if (in_[k].type == InputType::REG) {
@@ -969,6 +983,29 @@ int FmuFunction::eval_task(FmuMemory* m, casadi_int task, casadi_int n_task,
     for (size_t k = 0; k < out_.size(); ++k) {
       if (m->res[k] && out_[k].type == OutputType::REG) {
         fmu_.get(m, out_[k].ind, m->res[k]);
+      }
+    }
+  }
+  // Forward derivatives
+  if (need_fwd) {
+    // Pass all forward seeds
+    for (size_t k = 0; k < in_.size(); ++k) {
+      if (in_[k].type == InputType::FWD) {
+        fmu_.set_fwd(m, in_[k].ind, m->arg[k]);
+      }
+    }
+    // Request forward sensitivities
+    for (size_t k = 0; k < out_.size(); ++k) {
+      if (m->res[k] && out_[k].type == OutputType::FWD) {
+        fmu_.request_fwd(m, out_[k].ind);
+      }
+    }
+    // Calculate derivatives
+   if (fmu_.eval_derivative(m, false)) return 1;
+    // Collect forward sensitivities
+    for (size_t k = 0; k < out_.size(); ++k) {
+      if (m->res[k] && out_[k].type == OutputType::FWD) {
+        fmu_.get_fwd(m, out_[k].ind, m->res[k]);
       }
     }
   }
@@ -1324,6 +1361,37 @@ Function FmuFunction::get_jacobian(const std::string& name, const std::vector<st
   return ret;
 }
 
+bool FmuFunction::has_forward(casadi_int nfwd) const {
+  // Only implemented if "new_forward" is enabled
+  if (!new_forward_) return FunctionInternal::has_forward(nfwd);
+  // Only first order analytic derivative possible
+  if (!all_regular()) return false;
+  // FD to get forward directional derivatives not implemented
+  if (!enable_ad_) return false;
+  // Otherwise: Only 1 direction implemented
+  return nfwd == 1;
+}
+
+Function FmuFunction::get_forward(casadi_int nfwd, const std::string& name,
+    const std::vector<std::string>& inames,
+    const std::vector<std::string>& onames,
+    const Dict& opts) const {
+  // Only implemented if "new_forward" is enabled
+  if (!new_forward_) return FunctionInternal::get_forward(nfwd, name, inames, onames, opts);
+  // Only single directional derivative implemented
+  casadi_assert(nfwd == 1, "Not implemented");
+  // Hack: Inherit parallelization option
+  Dict opts1 = opts;
+  opts1["parallelization"] = to_string(parallelization_);
+  opts1["verbose"] = verbose_;
+  opts1["print_progress"] = print_progress_;
+  // Return new instance of class
+  Function ret;
+  ret.own(new FmuFunction(name, fmu_, inames, onames));
+  ret->construct(opts1);
+  return ret;
+}
+
 bool FmuFunction::has_reverse(casadi_int nadj) const {
   // Only first order analytic derivative possible
   if (!all_regular()) return false;
@@ -1400,5 +1468,151 @@ Dict FmuFunction::get_stats(void *mem) const {
   // Return stats
   return stats;
 }
+
+void FmuFunction::serialize_body(SerializingStream &s) const {
+  FunctionInternal::serialize_body(s);
+  s.version("FmuFunction", 2);
+
+  s.pack("FmuFunction::Fmu", fmu_);
+
+  casadi_assert_dev(in_.size()==n_in_);
+  for (const InputStruct& e : in_) {
+    s.pack("FmuFunction::in::type", static_cast<int>(e.type));
+    s.pack("FmuFunction::in::ind", e.ind);
+  }
+  casadi_assert_dev(out_.size()==n_out_);
+  for (const OutputStruct& e : out_) {
+    s.pack("FmuFunction::out::type", static_cast<int>(e.type));
+    s.pack("FmuFunction::out::ind", e.ind);
+    s.pack("FmuFunction::out::wrt", e.wrt);
+    s.pack("FmuFunction::out::rbegin", e.rbegin);
+    s.pack("FmuFunction::out::rend", e.rend);
+    s.pack("FmuFunction::out::cbegin", e.cbegin);
+    s.pack("FmuFunction::out::cend", e.cend);
+  }
+  s.pack("FmuFunction::jac_in", jac_in_);
+  s.pack("FmuFunction::jac_out", jac_out_);
+  s.pack("FmuFunction::jac_nom_in", jac_nom_in_);
+  s.pack("FmuFunction::sp_trans", sp_trans_);
+  s.pack("FmuFunction::sp_trans_map", sp_trans_map_);
+
+  s.pack("FmuFunction::has_jac", has_jac_);
+  s.pack("FmuFunction::has_fwd", has_fwd_);
+  s.pack("FmuFunction::has_adj", has_adj_);
+  s.pack("FmuFunction::has_hess", has_hess_);
+
+  s.pack("FmuFunction::enable_ad", enable_ad_);
+  s.pack("FmuFunction::validate_ad", validate_ad_);
+  s.pack("FmuFunction::make_symmetric", make_symmetric_);
+  s.pack("FmuFunction::check_hessian", check_hessian_);
+  s.pack("FmuFunction::step", step_);
+  s.pack("FmuFunction::abstol", abstol_);
+  s.pack("FmuFunction::reltol", reltol_);
+  s.pack("FmuFunction::print_progress", print_progress_);
+  s.pack("FmuFunction::new_jacobian", new_jacobian_);
+  s.pack("FmuFunction::new_forward", new_forward_);
+  s.pack("FmuFunction::new_hessian", new_hessian_);
+  s.pack("FmuFunction::hessian_coloring", hessian_coloring_);
+  s.pack("FmuFunction::validate_ad_file", validate_ad_file_);
+
+  s.pack("FmuFunction::fd", static_cast<int>(fd_));
+  s.pack("FmuFunction::parallelization", static_cast<int>(parallelization_));
+  s.pack("FmuFunction::init_stats", init_stats_);
+
+  s.pack("FmuFunction::jac_sp", jac_sp_);
+  s.pack("FmuFunction::hess_sp", hess_sp_);
+  s.pack("FmuFunction::jac_colors", jac_colors_);
+  s.pack("FmuFunction::hess_colors", hess_colors_);
+  s.pack("FmuFunction::nonlin", nonlin_);
+
+
+  s.pack("FmuFunction::max_jac_tasks", max_jac_tasks_);
+  s.pack("FmuFunction::max_hess_tasks", max_hess_tasks_);
+  s.pack("FmuFunction::max_n_tasks", max_n_tasks_);
+
+}
+
+FmuFunction::FmuFunction(DeserializingStream& s) : FunctionInternal(s) {
+  int version = s.version("FmuFunction", 1, 2);
+
+  s.unpack("FmuFunction::Fmu", fmu_);
+
+  in_.resize(n_in_);
+  for (InputStruct& e : in_) {
+    int t = 0;
+    s.unpack("FmuFunction::in::type", t);
+    e.type = static_cast<InputType>(t);
+    s.unpack("FmuFunction::in::ind", e.ind);
+  }
+  out_.resize(n_out_);
+  for (OutputStruct& e : out_) {
+    int t = 0;
+    s.unpack("FmuFunction::out::type", t);
+    e.type = static_cast<OutputType>(t);
+    s.unpack("FmuFunction::out::ind", e.ind);
+    s.unpack("FmuFunction::out::wrt", e.wrt);
+    s.unpack("FmuFunction::out::rbegin", e.rbegin);
+    s.unpack("FmuFunction::out::rend", e.rend);
+    s.unpack("FmuFunction::out::cbegin", e.cbegin);
+    s.unpack("FmuFunction::out::cend", e.cend);
+  }
+
+  s.unpack("FmuFunction::jac_in", jac_in_);
+  s.unpack("FmuFunction::jac_out", jac_out_);
+
+  s.unpack("FmuFunction::jac_nom_in", jac_nom_in_);
+  s.unpack("FmuFunction::sp_trans", sp_trans_);
+  s.unpack("FmuFunction::sp_trans_map", sp_trans_map_);
+
+  s.unpack("FmuFunction::has_jac", has_jac_);
+  s.unpack("FmuFunction::has_fwd", has_fwd_);
+  s.unpack("FmuFunction::has_adj", has_adj_);
+  s.unpack("FmuFunction::has_hess", has_hess_);
+
+  s.unpack("FmuFunction::enable_ad", enable_ad_);
+  s.unpack("FmuFunction::validate_ad", validate_ad_);
+  s.unpack("FmuFunction::make_symmetric", make_symmetric_);
+  s.unpack("FmuFunction::check_hessian", check_hessian_);
+  s.unpack("FmuFunction::step", step_);
+  s.unpack("FmuFunction::abstol", abstol_);
+  s.unpack("FmuFunction::reltol", reltol_);
+  s.unpack("FmuFunction::print_progress", print_progress_);
+  s.unpack("FmuFunction::new_jacobian", new_jacobian_);
+  if (version >= 2) s.unpack("FmuFunction::new_forward", new_forward_);
+  s.unpack("FmuFunction::new_hessian", new_hessian_);
+  s.unpack("FmuFunction::hessian_coloring", hessian_coloring_);
+  s.unpack("FmuFunction::validate_ad_file", validate_ad_file_);
+
+  int fd = 0;
+  s.unpack("FmuFunction::fd", fd);
+  fd_ = static_cast<FdMode>(fd);
+  int parallelization = 0;
+  s.unpack("FmuFunction::parallelization", parallelization);
+  parallelization_ = static_cast<Parallelization>(parallelization);
+
+  s.unpack("FmuFunction::init_stats", init_stats_);
+
+  s.unpack("FmuFunction::jac_sp", jac_sp_);
+  s.unpack("FmuFunction::hess_sp", hess_sp_);
+  s.unpack("FmuFunction::jac_colors", jac_colors_);
+  s.unpack("FmuFunction::hess_colors", hess_colors_);
+  s.unpack("FmuFunction::nonlin", nonlin_);
+
+  s.unpack("FmuFunction::max_jac_tasks", max_jac_tasks_);
+  s.unpack("FmuFunction::max_hess_tasks", max_hess_tasks_);
+  s.unpack("FmuFunction::max_n_tasks", max_n_tasks_);
+
+  if (has_jac_ || has_adj_ || has_hess_) {
+    // Setup Jacobian memory
+    casadi_jac_setup(&p_, jac_sp_, jac_colors_);
+    p_.nom_in = get_ptr(jac_nom_in_);
+    p_.map_out = get_ptr(jac_out_);
+    p_.map_in = get_ptr(jac_in_);
+  }
+
+}
+
+//void pack(SerializingStream&s, );
+
 
 } // namespace casadi

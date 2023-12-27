@@ -167,7 +167,7 @@ class CASADI_EXPORT Fmu
   int eval(FmuMemory* m) const;
 
   // Get a calculated variable
-  void get(FmuMemory* m, size_t id, double* value) const;
+  void get(FmuMemory* m, size_t ind, double* value) const;
 
   // Set seed
   void set_seed(FmuMemory* m, casadi_int nseed, const casadi_int* id, const double* v) const;
@@ -182,11 +182,39 @@ class CASADI_EXPORT Fmu
   // Get calculated derivatives
   void get_sens(FmuMemory* m, casadi_int nsens, const casadi_int* id, double* v) const;
 
+  // Set all forward seeds for a single input
+  void set_fwd(FmuMemory* m, size_t ind, const double* v) const;
+
+  // Request the calculation of all forward sensitivities for an output
+  void request_fwd(FmuMemory* m, casadi_int ind) const;
+
+  // Get the forward sensitivities for a single output
+  void get_fwd(FmuMemory* m, size_t ind, double* v) const;
+
   /** \brief Get stats
 
       \identifier{26y} */
   void get_stats(FmuMemory* m, Dict* stats,
     const std::vector<std::string>& name_in, const InputStruct* in) const;
+
+  /// \cond INTERNAL
+#ifndef SWIG
+    /** \brief  Create from node
+
+        \identifier{27c} */
+    static Fmu create(FmuInternal* node);
+#endif // SWIG
+  /// \endcond
+
+  /** \brief Serialize an object
+
+      \identifier{27d} */
+  void serialize(SerializingStream &s) const;
+
+  /** \brief Deserialize with type disambiguation
+
+      \identifier{27e} */
+  static Fmu deserialize(DeserializingStream& s);
 };
 
 } // namespace casadi
