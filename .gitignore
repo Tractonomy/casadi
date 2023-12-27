@@ -84,3 +84,4 @@ dockcross*
 *.deb
 *.tar.gz
 web
+COLCON_IGNORE
